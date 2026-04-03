@@ -4,94 +4,57 @@ import os
 import time
 import tempfile
 
-# --- PAGE CONFIG ---
-st.set_page_config(
-    page_title="AI Video Analyst",
-    page_icon="🎬",
-    layout="centered"
-)
+# Basic Page Setup
+st.set_page_config(page_title="AI Video Analyst", layout="centered")
 
-# --- STYLE ---
-st.markdown("""
-    <style>
-    .main {
-        background-color: #f8f9fa;
-    }
-    .stButton>button {
-        width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        background-color: #FF4B4B;
-        color: white;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# --- API KEY CONFIG ---
+# This looks for the key in Streamlit Cloud Secrets
+api_key = st.secrets.get("GEMINI_API_KEY")
 
-# --- API CONFIG ---
-# Streamlit Cloud uses st.secrets for API keys
-if "GEMINI_API_KEY" in st.secrets:
-    api_key = st.secrets["GEMINI_API_KEY"]
-else:
-    # Fallback for local testing
-    api_key = os.getenv("GEMINI_API_KEY")
-
-if api_key:
-    genai.configure(api_key=api_key)
-else:
-    st.warning("⚠️ Gemini API Key not found. Please add it to Secrets in Streamlit Cloud.")
+if not api_key:
+    st.error("🔑 API Key Missing! Go to Streamlit Settings > Secrets and add: GEMINI_API_KEY = 'your_key_here'")
     st.stop()
 
-# --- APP UI ---
-st.title("🎬 AI Video Recognition System")
-st.write("Upload a video and let Gemini AI analyze the content, objects, and actions.")
+genai.configure(api_key=api_key)
 
-uploaded_file = st.file_uploader("Choose a video file...", type=["mp4", "mov", "avi", "mkv"])
+st.title("🎬 AI Video Recognition")
+st.write("Upload a video and wait for the AI to analyze it.")
 
-if uploaded_file is not None:
-    # 1. Display the video
+uploaded_file = st.file_uploader("Choose a video...", type=["mp4", "mov", "avi"])
+
+if uploaded_file:
     st.video(uploaded_file)
     
-    # 2. Analysis Button
-    if st.button("🚀 Analyze Video Content"):
-        with st.status("Processing video with Gemini AI...", expanded=True) as status:
+    if st.button("Analyze Video"):
+        with st.spinner("AI is processing..."):
             try:
-                # Save uploaded file to a temporary location
-                tfile = tempfile.NamedTemporaryFile(delete=False)
-                tfile.write(uploaded_file.read())
-                video_path = tfile.name
+                # Save to a temp file
+                suffix = os.path.splitext(uploaded_file.name)[1]
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(uploaded_file.read())
+                    tmp_path = tmp.name
 
-                st.write("📤 Uploading to Google AI Studio...")
-                video_file = genai.upload_file(path=video_path)
+                # Upload to Google
+                video_file = genai.upload_file(path=tmp_path)
                 
-                # Wait for the file to be processed by Google
-                st.write("⏳ AI is watching the video...")
+                # Wait for Google to process the video
                 while video_file.state.name == "PROCESSING":
                     time.sleep(2)
                     video_file = genai.get_file(video_file.name)
 
-                if video_file.state.name == "FAILED":
-                    st.error("❌ Video processing failed on the AI server.")
-                    st.stop()
-
-                st.write("🧠 Generating analysis...")
-                model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+                # Generate Analysis
+                model = genai.GenerativeModel("gemini-1.5-flash")
                 response = model.generate_content([
-                    "Analyze this video in detail. Describe the setting, the main subjects, any significant actions, and provide a summary of the events.",
+                    "What is happening in this video? Describe it in detail.",
                     video_file
                 ])
 
-                status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
-
-                # Display Results
-                st.success("Analysis Result:")
-                st.markdown(response.text)
-
+                st.success("Done!")
+                st.write(response.text)
+                
                 # Cleanup
-                os.unlink(video_path)
                 genai.delete_file(video_file.name)
+                os.unlink(tmp_path)
 
             except Exception as e:
-                st.error(f"❌ An error occurred: {str(e)}")
-                if 'video_path' in locals(): os.unlink(video_path)
-else:
-    st.info("💡 Please upload a video file (MP4, MOV, etc.) to begin.")
+                st.error(f"Error: {str(e)}")
