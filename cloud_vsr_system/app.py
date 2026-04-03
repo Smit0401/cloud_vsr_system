@@ -42,8 +42,15 @@ if uploaded_file:
                     time.sleep(2)
                     video_file = genai.get_file(video_file.name)
 
-                # Generate Analysis
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                # Find the correct model name (handles 404 errors)
+                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                model_name = "models/gemini-1.5-flash"
+                if model_name not in available_models:
+                    # Fallback to the first 1.5-flash model found
+                    flash_models = [m for m in available_models if '1.5-flash' in m]
+                    model_name = flash_models[0] if flash_models else "models/gemini-pro"
+
+                model = genai.GenerativeModel(model_name)
                 response = model.generate_content([
                     "What is happening in this video? Describe it in detail.",
                     video_file
