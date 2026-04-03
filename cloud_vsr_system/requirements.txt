@@ -1,5 +1,2 @@
 streamlit
 google-generativeai
-google-ai-generativelanguage
-python-dotenv
-google-auth
